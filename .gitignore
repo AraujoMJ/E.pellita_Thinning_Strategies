@@ -20,7 +20,7 @@
 
 # RStudio files
 .Rproj.user/
-
+*.Rproj
 # produced vignettes
 vignettes/*.html
 vignettes/*.pdf
@@ -47,3 +47,14 @@ po/*~
 
 # RStudio Connect folder
 rsconnect/
+
+# .xlsx files
+*.xlsx
+
+# .nb.html files
+*.nb.html
+
+# Plot
+*.tiff
+*.png
+*.jpeg

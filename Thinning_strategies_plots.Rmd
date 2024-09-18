@@ -1,0 +1,380 @@
+---
+title: "Thinning strategies in *E. pellita* - Plots"
+author: "Araujo MJ"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    code_folding: hide
+    toc: yes
+    toc_depth: '2'
+    df_print: paged
+    toc_float:
+      collapsed: yes
+      smooth_scroll: yes
+    number_sections: yes
+    fig_caption: yes
+    toc-location: left
+  html_notebook:
+    code_folding: hide
+    toc: yes
+    toc_depth: '2'
+    toc_float:
+      collapsed: yes
+      smooth_scroll: yes
+    number_sections: yes
+    fig_caption: yes
+    toc-location: left
+---
+```{r, include=FALSE}
+knitr::opts_chunk$set(
+  echo = T,
+  message = F,
+  warning = F
+)
+```
+
+# Wrangling dataset
+
+```{r pct, message=F, warning=F}
+library(tidyverse)
+library(openxlsx)
+library(breedR)
+library(knitr)
+```
+
+```{r load dt, message=F, warning=F}
+# BV
+BV <- read.xlsx("Data/Summary_of_families_for_4_groups_DAP.3_trait_2022-08-23_PH.xlsx", sheet = "Sheet 1")
+# Thinning strategies
+TS <- read.xlsx("Data/Thinning_Strategies_for_DAP.3_trait_2022-08-23_PH_v2.xlsx")
+
+kable(head(BV))
+kable(head(TS))
+```
+
+# Plots {.tabset}
+```{r BV_prep_data}
+# Wrangling data
+BV_Final <- BV |> 
+  dplyr::select(
+    -c(
+      "s.e_a_fam",
+      "u+a_fam",
+      "BV_Total"
+    )
+  ) |> 
+  rename(Rank = "posição") |> 
+  mutate(
+    Rank = as.character(Rank),
+  ) |> 
+  pivot_longer(
+    cols = c(
+      "a_fam",
+      "a_prov",
+      "a_total"
+    ),
+    names_to = "BV",
+    values_to = "Value"
+  )
+# Set up lines to separate groups in the graph
+data_group_line <- BV_Final |> 
+  filter(BV == "a_total") |> 
+  group_by(Group) %>%
+  slice(which.max(Value)) |> 
+  ungroup()
+```
+
+```{r Plot_BV, fig.height=5, fig.width=7}
+# Plot
+plot_bv <- BV_Final |> 
+  ggplot(
+    aes(x = reorder(Family, -Value, sum), 
+        y = Value, 
+        colour = BV)
+    ) +
+  # Geom_point_line
+  geom_point(
+    aes(group = BV),
+    size = 1.5,
+    position = position_dodge(width = 0.5)
+  ) +
+  geom_line(
+    aes(group = BV),
+    size = 0.5,
+    position = position_dodge(width = 0.5)
+  ) +
+  geom_hline(
+    yintercept = 0,
+    linetype = "dashed",
+    color = "black",
+    size = 1,
+    alpha = 0.5
+  ) +
+  # Add lines
+  geom_vline(
+    data = data_group_line |> 
+      filter(Group != "G1"),
+    aes(xintercept = as.numeric(Rank)),
+    linetype = "dashed",
+    color = "black",
+    size = 1,
+    alpha = 0.2
+  ) +
+  # Geom_smooth
+  geom_smooth(
+    aes(group = BV),
+    method = "lm",
+    se = T,
+    formula = y ~ poly(x, 3),
+    show.legend = F
+  ) +
+  # Change colours mannually
+  scale_colour_manual(
+    name = "Genetic effect type:",
+    breaks = c("a_fam", "a_prov", "a_total"),
+    labels = c("Additive", "Provenance", "Total"),
+    values = c(
+      "a_fam" = "red",
+      "a_prov" = "blue",
+      "a_total" = "green4"
+    )
+  ) +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(
+      hjust = 1,
+      size = 4
+    ),
+    # legend at bottom, centered and small
+    legend.position = "bottom",
+    legend.title = element_text(size = 8),
+    plot.title = element_text(
+      size = 13,
+      face = "bold",
+      hjust = 0.5
+    ),
+  ) +
+  labs(
+    # Title as expressions
+    title = expression(
+      paste(
+        "Additive, provenance and total genetic effects in ",
+        italic("E. pellita"),
+      )
+    ),
+    x = "Families ranked by total genetic effect",
+    y = "Genetic effect",
+    fill = "Breeding value"
+  ) +
+  scale_x_discrete(
+    guide = guide_axis(
+      n.dodge = 1,
+      angle = 45,
+      check.overlap = T
+    ),
+    labels = function(x) paste0("fam_", x)
+  ) +
+  # Annotate
+  annotate(
+    "text",
+    x = c(
+      "40",
+      "78",
+      "117",
+      "7"
+    ),
+    y = -4.22,
+    label = c(
+      "Group\none",
+      "Group\ntwo",
+      "Group\nthree",
+      "Group\nfour"
+    ),
+    vjust = 1.5,
+    hjust = 0.5,
+    size = 3
+  )
+  
+plot_bv
+
+# Remove x-axis labels
+plot_bv_no_x_labels <- plot_bv + theme(axis.text.x = element_blank())
+plot_bv_no_x_labels
+# Increase x-axis labels size
+plot_bv_big_x_labels <- plot_bv + theme(axis.text.x = element_text(size = 8))
+plot_bv_big_x_labels
+
+# Save plot
+ggsave(
+  plot = plot_bv,
+  "Output/BV_Total.png",
+  width = 7,
+  height = 5,
+  dpi = 300
+)
+
+ggsave(
+  plot = plot_bv_no_x_labels,
+  "Output/BV_Total_no_x_labels.png",
+  width = 7,
+  height = 5,
+  dpi = 300
+)
+
+ggsave(
+  plot = plot_bv_big_x_labels,
+  "Output/BV_Total_big_x_labels.png",
+  width = 7,
+  height = 5,
+  dpi = 300
+)
+
+```
+
+```{r TS_plot, fig.height=5, fig.width=7}
+# Clean and prepare the data
+data <- TS %>%
+  mutate(
+    N_Progeny_Percent = as.numeric(sub("%", "", `N_Progeny(%)`)),
+    GS_Percent = as.numeric(sub("%", "", GS)),
+    NE = as.numeric(NE)
+  ) %>%
+  arrange(desc(GS_Percent))
+
+# Create an ordered factor for N_Strategy based on GS_Percent
+data <- data %>%
+  mutate(N_Strategy = factor(N_Strategy, levels = N_Strategy[order(-GS_Percent)]))
+
+# Set the color and size for the dashed square
+color_dash <- "black"
+size_dash <- 0.7
+# Create the plot
+plot_gs <- ggplot(data, aes(x = N_Strategy)) +
+  geom_bar(
+    aes(y = GS_Percent,
+        fill = "Genetic gain (%)"),
+    stat = "identity",
+    #fill = "skyblue4",
+    alpha = 0.7
+  ) +
+  geom_line(aes(y = NE / max(NE) * max(GS_Percent), 
+                group = 1, color = "Effective number"),
+            size = 1) +
+  geom_point(aes(y = NE / max(NE) * max(GS_Percent), color = "Effective number"), 
+             #color = "red", 
+             size = 2) +
+  scale_y_continuous(
+    name = "Genetic gain (%)",
+    sec.axis = sec_axis(
+      ~ . * max(data$NE) / max(data$GS_Percent),
+      name = "Effective size"
+    ),
+    limits = c(0, 0.25),
+    breaks = seq(0, 0.25, by = 0.05),
+    labels = scales::percent_format(scale = 100),
+  ) +
+  scale_x_discrete(labels = data$`N_Progeny(%)`,
+                   guide = guide_axis(
+                     n.dodge = 1,
+                     angle = 45,
+                     check.overlap = T
+                   )) +
+  labs(
+    # y = "Genetic gain (%)"
+    x = "Remaining trees (%)", 
+    title = "",
+    fill = "", 
+    color = ""
+       ) +
+  scale_fill_manual(values = c("Genetic gain (%)" = "skyblue4")) +
+  scale_color_manual(values = c("Effective number" = "red")) +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(
+    #angle = 45,
+    hjust = 1,
+    size = 4
+    ),
+    legend.position = "bottom",
+    ) +
+  # Include and dashed square on the plot marking a region on the graph
+  annotate(
+    "segment",
+    x = 12,
+    xend = 12,
+    y = 0.074,
+    yend = 0.175,
+    color = color_dash,
+    size = size_dash,
+    linetype = "dashed"
+  ) +
+  annotate(
+    "segment",
+    x = 28,
+    xend = 28,
+    y = 0.075,
+    yend = 0.175,
+    color = color_dash,
+    size = size_dash,
+    linetype = "dashed"
+  ) +
+  annotate(
+    "segment",
+    x = 12,
+    xend = 28,
+    y = 0.075,
+    yend = 0.075,
+    color = color_dash,
+    size = size_dash,
+    linetype = "dashed"
+  ) +
+  annotate(
+    "segment",
+    x = 12,
+    xend = 28,
+    y = 0.175,
+    yend = 0.175,
+    color = color_dash,
+    size = size_dash,
+    linetype = "dashed"
+  )
+
+plot_gs
+# plot_gs with no x-axis labels
+plot_gs_no_x_labels <- plot_gs + theme(axis.text.x = element_blank())
+plot_gs_no_x_labels
+
+# plot_gs with increaded x-axis labels size
+plot_gs_big_x_labels <- plot_gs + theme(axis.text.x = element_text(size = 8))
+plot_gs_big_x_labels
+
+# Save plot
+ggsave(
+  plot = plot_gs,
+  "Output/Thinning_Strategies.png",
+  width = 7,
+  height = 5,
+  dpi = 300
+)
+
+ggsave(
+  plot = plot_gs_no_x_labels,
+  "Output/Thinning_Strategies_no_x_labels.png",
+  width = 7,
+  height = 5,
+  dpi = 300
+)
+
+ggsave(
+  plot = plot_gs_big_x_labels,
+  "Output/Thinning_Strategies_big_x_labels.png",
+  width = 7,
+  height = 5,
+  dpi = 300
+)
+```
+
+```{r Final}
+
+```
+

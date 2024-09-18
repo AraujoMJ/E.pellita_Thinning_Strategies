@@ -1,0 +1,456 @@
+---
+title: "Thinning strategies in *E. pellita*"
+author: "Araujo MJ"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    code_folding: hide
+    toc: yes
+    toc_depth: '2'
+    df_print: paged
+    toc_float:
+      collapsed: yes
+      smooth_scroll: yes
+    number_sections: yes
+    fig_caption: yes
+    toc-location: left
+  html_notebook:
+    code_folding: hide
+    toc: yes
+    toc_depth: '2'
+    toc_float:
+      collapsed: yes
+      smooth_scroll: yes
+    number_sections: yes
+    fig_caption: yes
+    toc-location: left
+---
+```{r, include=FALSE}
+knitr::opts_chunk$set(
+  echo = T,
+  message = F,
+  warning = F
+)
+```
+
+# Wrangling dataset
+
+```{r inst.pct}
+# Install packages
+## devtools::install_github('famuvie/breedR') # --> Fail to install
+# The codes bellow succeed to install
+## source("http://famuvie.github.io/breedR/src/setup_repo.R")
+## install.packages('breedR')
+```
+
+
+```{r pct, message=F, warning=F}
+library(tidyverse)
+library(openxlsx)
+library(breedR)
+```
+
+```{r load dt, message=F, warning=F}
+Data <- read.xlsx("Data/Data.xlsx", sheet = "Progenie") |>
+  # Excluding Treatment = 1
+  filter(is.na(Tratamento))
+knitr::kable(head(Data, 10))
+```
+
+```{r load func}
+# Load `DiagFunc` and 'others' functions
+source(
+  "https://raw.githubusercontent.com/AraujoMJ/AraujoMJ_Functions/main/Functions_mja_2022_v1.R"
+)
+# Load `Thinning_BreedR` function
+source(
+  "https://raw.githubusercontent.com/AraujoMJ/AraujoMJ_Functions/main/Thinning_BreedR.R"
+)
+```
+
+# Diagnostic analysis {.tabset}
+
+## ***DAP:***
+
+```{r DiagFuncDAP, message=F, warning=F, fig.height=6, fig.width=8}
+# names(Data)
+par(mfrow = c(2, 2))
+DiagDAP <-
+  DiagFunc(
+    Rep = "Bloco",
+    Trait = "DAP.3",
+    Trat = "Genotipo",
+    data1 = Data,
+    Exp_Name = " ",
+    Exp = NULL,
+    plot_diag1 = T,
+    plot_diag2 = T,
+    nDiag = 1,
+    verbose = F,
+    ColumnNames_To_Return = c(
+      "Bloco",
+      "Genotipo",
+      "Procedencia",
+      "especie_id",
+      "Arv",
+      "CONCAT.",
+      "DAP.1",
+      "Alt.1",
+      "Vol.1"
+    )
+  )
+# ~ 
+```
+
+## ***ALT:***
+
+```{r DiagFuncALT, message=F, warning=F, fig.height=6, fig.width=8}
+# names(Data)
+par(mfrow = c(2, 2))
+DiagALT <-
+  DiagFunc(
+    Rep = "Bloco",
+    Trait = "Alt.3",
+    Trat = "Genotipo",
+    data1 = Data,
+    Exp_Name = " ",
+    Exp = NULL,
+    plot_diag1 = T,
+    plot_diag2 = T,
+    nDiag = 1,
+    verbose = F,
+    ColumnNames_To_Return = c(
+      "Bloco",
+      "Genotipo",
+      "Procedencia",
+      "especie_id",
+      "Arv",
+      "CONCAT.",
+      "DAP.1",
+      "Alt.1",
+      "Vol.1"
+    )
+  )
+#DiagALT
+```
+
+## ***Vol:***
+
+```{r DiagFunc Vol, message=F, warning=F, fig.height=6, fig.width=8}
+# names(Data)
+par(mfrow = c(2, 2))
+DiagVOL <-
+  DiagFunc(
+    Rep = "Bloco",
+    Trait = "Vol.3",
+    Trat = "Genotipo",
+    data1 = Data,
+    Exp_Name = " ",
+    Exp = NULL,
+    plot_diag1 = T,
+    plot_diag2 = T,
+    nDiag = 1,
+    verbose = F,
+    ColumnNames_To_Return = c(
+      "Bloco",
+      "Genotipo",
+      "Procedencia",
+      "especie_id",
+      "Arv",
+      "CONCAT.",
+      "DAP.1",
+      "Alt.1",
+      "Vol.1"
+    )
+  )
+#
+```
+
+```{r mergeData}
+# Merge data
+DataALL <- left_join(
+  left_join(
+    # DAP and ALT
+    DiagDAP$DataAfterDiag,
+    DiagALT$DataAfterDiag,
+    by = c("Bloco",
+           "Genotipo",
+           "Procedencia",
+           "especie_id",
+           "Arv",
+           "CONCAT.",
+           "DAP.1",
+           "Alt.1",
+           "Vol.1")
+  ),
+  DiagVOL$DataAfterDiag,
+  by = c("Bloco",
+         "Genotipo",
+         "Procedencia",
+         "especie_id",
+         "Arv",
+         "CONCAT.",
+         "DAP.1",
+         "Alt.1",
+         "Vol.1")
+)
+
+knitr::kable(head(DataALL, 10))
+```
+
+# Genetic analysis
+
+## Build Pedigree
+
+### Recode Genotipo
+
+```{r prep ped}
+# Map genotype
+RecodeGen <- DataALL |>
+  filter(Procedencia != "Clone") |>
+  distinct(Genotipo) %>%
+  mutate(recoded_genotype = seq_len(nrow(.)))
+
+# Insert column with recode Genotipo: mother
+DataALL$mother <-
+  RecodeGen[match(DataALL$Genotipo, RecodeGen$Genotipo), "recoded_genotype"] |>
+  as.numeric()
+
+# Creating dataset without Clone
+Progenies <- DataALL |>
+  filter(Procedencia != "Clone") |>
+  mutate(ID = as.numeric(seq_along(Genotipo) + 1000),
+         father = as.numeric(NA),
+         Plot = interaction(Bloco, Genotipo, sep = ":"))
+
+```
+
+### Prepare pedigree: `build_pedigree` function from breedR package
+
+```{r pedBreedR}
+Pedigree <- build_pedigree(
+  self = "ID",
+  sire = "father",
+  dam = "mother",
+  data = Progenies
+)
+knitr::kable(tail(as.data.frame(Pedigree), 10))
+```
+
+## Adjust model: `remlf90` function from breedR package
+
+```{r mod_1, message=F, warning=F}
+system.time(modDAP <- remlf90(
+  DAP.3 ~ 1 + Bloco,
+  random = ~ Plot + Procedencia,
+  genetic = list(
+    model = "add_animal",
+    pedigree = Pedigree,
+    id = "ID"
+  ),
+  data = Progenies |>
+    mutate(Bloco = as.factor(Bloco),
+           Procedencia = as.factor(Procedencia),
+           Plot = as.factor(Plot)),
+  method = "em",
+  progsf90.options = 'EM-REML 10'
+  )
+)
+summary(modDAP)
+```
+
+## Deviance Analysis
+
+***By using*** **`Deviance_BreedR` function**
+
+```{r applyDeviance, message=F, warning=F}
+DevianceAnalyses <- Deviance_BreedR(
+  Trait = "DAP.3",
+  Model = modDAP,
+  Data = Progenies,
+  Pedigree = Pedigree,
+  Method = "EM",
+  model_type = "std_animal"
+)
+DevianceAnalyses
+```
+
+## Extract estimates
+
+```{r Varcomp}
+Extract_h2a_breedR(Model = modDAP, 
+            random_effect = c("Plot", "Procedencia"),
+            model_type = "std")
+```
+
+# Extract Blups
+
+***By using*** `BV_BreedR` ***function***
+
+-   **BV** from provenances, families and trees:
+
+```{r BVfam}
+# names(Progenies)
+NamesReturn <-
+  c(
+    "ID",
+    "Bloco",
+    "Genotipo",
+    "Procedencia",
+    "especie_id",
+    "Arv",
+    "CONCAT.",
+    "DAP.1",
+    "Alt.1",
+    "Vol.1",
+    "DAP.3",
+    "Alt.3",
+    "Vol.3",
+    "mother"
+  )
+BV <- BV_BreedR(
+  data = Progenies,
+  Model = modDAP,
+  NamesID = "ID",
+  Pedigree = Pedigree,
+  ColumnFamilies = "mother",
+  Rank = T,
+  NamesReturnDataset = NamesReturn,
+  model_type = "std",
+  random_effect = "Procedencia",
+  fixed_effect_av = "Bloco"
+)
+
+```
+
+## Organizing breeding values on datasets
+
+```{r BV_org}
+# BV from trees
+Data_BV <- BV$Data_Total
+  # Input provenance effects
+Data_BV$BV_Procedencia <-
+  BV$BV_random_effect[match(Data_BV$Procedencia, rownames(BV$BV_random_effect)), "value"]
+  # Input families effects
+Data_BV$BV_family <-
+  BV$BV_Parents[match(Data_BV$mother, BV$BV_Parents$Family), "a"]
+
+# BV_from_families
+BV_Family <- BV$BV_Parents
+  # Input family information: 'Genotipo' column on original data
+BV_Family$Genotipo <-
+  Data_BV[match(BV$BV_Parents$Family, Data_BV$mother), "Genotipo"]
+
+  # Input provenance information
+BV_Family$Procedencia <-
+  Data_BV[match(BV$BV_Parents$Family, Data_BV$mother), "Procedencia"]
+  # Input provenance effects
+BV_Family$a_prov <-
+  BV$BV_random_effect[match(BV_Family$Procedencia, rownames(BV$BV_random_effect)), "value"]
+
+  # Input BV_Total: BV from families + BV from provenances
+BV_Family <- BV_Family |>
+  rename(a_fam = a,
+         s.e_a_fam = s.e,
+         `u+a_fam` = `u+a`) |>
+  mutate(a_total = a_fam + a_prov,
+         BV_Total = `u+a_fam` + a_prov) |>
+  dplyr::select(Family, Genotipo, Procedencia, s.e_a_fam,`u+a_fam`, a_fam, a_prov, a_total, BV_Total)
+
+knitr::kable(BV_Family)
+```
+
+```{r exportProced_excel, eval=FALSE}
+write.xlsx(BV$BV_random_effect |>
+             rownames_to_column(var = "Provenance"), 
+           file = paste0("Output/Blups_proced_prog_test_pellita", Sys.Date(), ".xlsx"))
+```
+
+*Breeding values from families (`a_fam`) vs Breeding values from families + provenances (`a_fam` + `a_prov`)*
+
+```{r BV_id_Total}
+
+plot(BV_Family$a_fam ~ BV_Family$a_total)
+
+
+```
+
+# Running model without provenance effect in the model
+
+## Adjust model
+
+```{r ModelNoProv, message=F, warning=F}
+system.time(modDAP2 <- remlf90(
+  DAP.3 ~ 1 + Bloco,
+  random = ~ Plot,
+  genetic = list(
+    model = "add_animal",
+    pedigree = Pedigree,
+    id = "ID"
+  ),
+  data = Progenies |>
+    mutate(Bloco = as.factor(Bloco),
+           Plot = as.factor(Plot)),
+  method = "em",
+  progsf90.options = 'EM-REML 10'
+  )
+)
+summary(modDAP2)
+
+```
+
+## Extract BLUP
+
+```{r BLUP2}
+
+BV2 <- BV_BreedR(
+  data = Progenies,
+  Model = modDAP2,
+  NamesID = "ID",
+  Pedigree = Pedigree,
+  ColumnFamilies = "mother",
+  Rank = T,
+  NamesReturnDataset = NamesReturn,
+  model_type = "std",
+  random_effect = NULL,
+  fixed_effect_av = "Bloco"
+)
+# BLUP from families
+BV_Family2 <- BV2$BV_Parents
+knitr::kable(BV_Family2)
+```
+
+1.  *Breeding values from families on model with provenances effects (`a_fam`) vs Breeding values from families on model without provenances effects (`a`)*
+
+2.  *Breeding values from families + provenance on model with provenances effects (`a_total`) vs Breeding values from families on model without provenance effects (`a`)*
+
+```{r comparisomModels}
+# Case 1
+plot(BV_Family$a_fam, BV_Family2$a)
+# Case 2
+plot(BV_Family$a_total, BV_Family2$a)
+```
+
+# Thinning Strategies
+
+```{r thinningPellita}
+system.time(
+  Thinning_pellita <- Thinning_BreedR(
+    BV_Column = "a_total",
+    Trait = "DAP.3",
+    BV_fam = BV_Family,
+    Data_Total = BV$Data_Total,
+    Family_Data_Total = "mother",
+    Bloc_Column = "Bloco",
+    nGroups = 4,
+    label.group.y = c(1, 1.5, 1, 1),
+    Plot.Rank = TRUE,
+    save_plot_rank = TRUE,
+    IS = NULL,
+    id = "ID",
+    length_seq_combinations = 1
+  )
+)
+# ~
+```
+
