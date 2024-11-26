@@ -58,3 +58,6 @@ rsconnect/
 *.tiff
 *.png
 *.jpeg
+
+# .pdf
+*.pdf
