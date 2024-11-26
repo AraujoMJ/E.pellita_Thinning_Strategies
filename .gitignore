@@ -56,7 +56,7 @@ rsconnect/
 
 # Plot
 *.tiff
-*.png
+#*.png
 *.jpeg
 
 # .pdf
